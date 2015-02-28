@@ -30,6 +30,9 @@ def tf(values, encoding="utf-8"):
 
 # scrapy crawl raceday -a date=20150201 -a coursecode='ST'
 # or latest event scrapy crawl raceday
+
+
+
 class Racedayspider(scrapy.Spider):
     name = "raceday"
     allowed_domains = ["hkjc.com"]
@@ -37,18 +40,25 @@ class Racedayspider(scrapy.Spider):
     # start_url = "http://racing.hkjc.com/racing/Info/meeting/Results/english/Local/%s/%s/1"
     start_url = "http://racing.hkjc.com/racing/Info/Meeting/RaceCard/English/Local/%s/%s/1"
 
-    def __init__(self, date=None, coursecode=None):
-        if date is None or coursecode is None:
-            self.historical = False
-            # start_url = "http://racing.hkjc.com/racing/Info/meeting/RaceCard/english/Local/"
-            # raise ValueError("Invalid spider parameters")
-        else:
-            self.racedate = date
-            self.racecode = coursecode
+    ###NEEDS TO USE **kwargs) and get
+    def __init__(self, **kwargs):
+        for k,v in kwargs.items():
             self.historical = True
-        logfile = open('testlog.log', 'w')
-        log_observer = ScrapyFileLogObserver(logfile, level=logging.DEBUG)
-        log_observer.start()
+            self.racedate = kwargs.get('date')
+            self.racecode = kwargs.get('coursecode')
+
+    # def __init__(self, date=None, coursecode=None):
+    #     if date is None or coursecode is None:
+    #         self.historical = False
+    #         # start_url = "http://racing.hkjc.com/racing/Info/meeting/RaceCard/english/Local/"
+    #         # raise ValueError("Invalid spider parameters")
+    #     else:
+    #         self.racedate = date
+    #         self.racecode = coursecode
+    #         self.historical = True
+    #     logfile = open('testlog.log', 'w')
+    #     log_observer = ScrapyFileLogObserver(logfile, level=logging.DEBUG)
+    #     log_observer.start()
 
 # class OddsSpider(CrawlSpider):
 #     name = "raceday"
