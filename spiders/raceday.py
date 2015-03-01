@@ -2,6 +2,7 @@ import scrapy
 import re
 from .. import items 
 from scrapy.contrib.spiders import Rule, CrawlSpider
+from scrapy.contrib.loader import ItemLoader
 from datetime import datetime, date
 from time import strftime
 from scrapy import log
@@ -9,11 +10,15 @@ import pprint
 from scrapy.http import Request
 from scrapy.contrib.loader.processor import TakeFirst
 from scrapy.contrib.linkextractors import LinkExtractor
+from scrapy.contrib.loader.processor import TakeFirst, Compose, Join, MapCompose
 from datetime import time
 from dateutil.relativedelta import relativedelta
 import logging
 # from ..textxml import *
 from scrapy.log import ScrapyFileLogObserver
+
+from hkdata.items import ResultsItem, RacedayItem
+
 pp = pprint.PrettyPrinter(indent=4)
 
 
@@ -24,13 +29,36 @@ def tf(values, encoding="utf-8"):
             value = v
             break
     return value.encode(encoding).strip()
+def try_int(value):
+    try:
+        return int(value)
+    except:
+        return 0
 
+def noentryprocessor(value):
+    return None if value == '' else value
+
+def identity(value):
+    return value
 
 #USAGE: 
 
 # scrapy crawl raceday -a date=20150201 -a coursecode='ST'
 # or latest event scrapy crawl raceday
 
+
+#use if required
+class RacedayItemsLoader(ItemLoader):
+    default_item_class = RacedayItem
+    default_output_processor = Compose(TakeFirst(), unicode, unicode.strip)
+    Draw_out = Compose(default_output_processor, try_int)
+    Place_out = Compose(default_output_processor)
+    HorseNumber_out = Compose(default_output_processor, noentryprocessor)
+    RaceNumber_out = Compose(default_output_processor, try_int)
+    HorseNumber_out = Compose(default_output_processor, try_int)
+    DeclarHorseWt_out = Compose(default_output_processor, try_int)
+    # image_urls_out = MapCompose(_cleanurl) 
+    image_urls_out = Compose(identity)
 
 
 class Racedayspider(scrapy.Spider):
@@ -92,8 +120,16 @@ class Racedayspider(scrapy.Spider):
     def parse(self, response):
 
         if "No race meeting" in response.body:
-            log.msg("No meeting")
-        try:
+            log.msg("Results page not ready, waiting 2 secs...", logLevel=log.INFO)
+            sleep(2)
+            yield Request(response.url, dont_filter=True)
+        else:
+            #extract links receives Response returns a list of scrapy.link,Link objs
+            #use instead of a crawl spider!
+            for link in LinkExtractor(restrict_xpaths="//div[contains(@class,'raceNum')]", deny=(r'.*/Simulcast/.*')).extract_links(response)[:-1]:
+                yield Request(link.url)
+           
+          
             # racedate = response.xpath("//html/body/table/tbody/tr/td/table/tbody/tr[2]/td[2]/table/tbody/tr/td[2]/table/tbody/tr[1]/td/div/table/tbody/tr/td[2]/table/tbody/tr/td[4]/text()").extract()
             # racecoursecode = response.xpath("//html/body/table/tbody/tr/td/table/tbody/tr[2]/td[2]/table/tbody/tr/td[2]/table/tbody/tr[1]/td/div/table/tbody/tr/td[2]/table/tbody/tr/td[4]/nobr/text()").extract()
             # racenumber = re.sub("\D", "", response.xpath('//td[@class="content"]/strong/text()').extract())
@@ -180,10 +216,8 @@ class Racedayspider(scrapy.Spider):
             #oddsdata is a dict. race, [place|win], horseno odds, 
 
             #get runners each race
-            pp.pprint(meta)
 
 
-            runner_items= []
             # runner_items.append(item)
             # pprint(runner_items)
             runners= response.xpath("//table[@class=\"draggable hiddenable\"]/tr[contains(@class, 'font13 tdAlignC')]")
@@ -200,7 +234,7 @@ class Racedayspider(scrapy.Spider):
                 item['Jockeyname'] = r.xpath("td[7]/a/text()").extract()[0].strip()
                 item['Jockeycode'] = re.search(r'.*jockeycode=(.*)\',', r.xpath("td[7]/a/@href").extract()[0].strip()).group(1) 
                 item['JockeyWtOver'] = r.xpath("td[8]/text()").extract()[0].strip()
-                item['Draw'] = r.xpath("td[9]/text()").extract()[0].strip() 
+                item['Draw'] = r.xpath("td[9]/text()").extract()[0].strip()
                 item['Trainername'] = r.xpath("td[10]/a/text()").extract()[0].strip()
                 item['Trainercode'] = re.search(r'.*trainercode=(.*)\',', r.xpath("td[10]/a/@href").extract()[0].strip()).group(1)
                 item['Rating'] = r.xpath("td[11]/text()").extract()[0].strip()
@@ -234,9 +268,8 @@ class Racedayspider(scrapy.Spider):
                 item['Raceratingspan'] = meta['Raceratingspan']
                 item['Raceclass'] = meta['Raceclass']
                 item['file_urls'] = meta['file_urls']
-                runner_items.append(item)
-
-            return runner_items 
+                # table_data.append(item)
+                yield item
 
 
 #             for row, r in enumerate(response.xpath("//table[@class=\"draggable hiddenable\"]/tr[contains(@class, 'font13 tdAlignC')]")):
@@ -371,6 +404,4 @@ class Racedayspider(scrapy.Spider):
             #             item[k] = tf(r.xpath("./td[%s]/font/text()" % (j+1)).extract()).replace("\xc2\xa0", " ").strip()
             #         item["EventDate"] = datetime.strptime(item["EventDate"], "%d/%m/%Y").date()
             #         yield item
-        except Exception, e:
-            log.msg("Skipping meeting because of error: %s" % (str(e)))
 
