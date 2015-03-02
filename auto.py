@@ -79,7 +79,7 @@ for r in mynewraces:
 	#vmac$ curl http://localhost:6800/schedule.json -d project=hkjc -d spider=results -d date=20150101 -d coursecode=ST
 	#currently: 20141220-d/None/1
 	os.system("curl http://localhost:6800/schedule.json -d project=hkdata -d spider=raceday-d setting=DOWNLOAD_DELAY=2 -d date=" + r + " -d coursecode=" + mynewraces[r])
-	# os.system("curl http://localhost:6800/schedule.json -d project=hkjc -d spider=results -d setting=DOWNLOAD_DELAY=2 -d date=" + str(r) + ",coursecode=" + str(mynewraces[r]))
+	os.system("curl http://localhost:6800/schedule.json -d project=hkjc -d spider=results -d setting=DOWNLOAD_DELAY=2 -d date=" + str(r) + ",coursecode=" + str(mynewraces[r]))
 
 
 	# os.system("scrapy crawl results -a date=" + r +" -a coursecode=" + mynewraces[r] + "")

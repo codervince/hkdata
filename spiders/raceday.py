@@ -29,6 +29,8 @@ def tf(values, encoding="utf-8"):
             value = v
             break
     return value.encode(encoding).strip()
+
+
 def try_int(value):
     try:
         return int(value)
@@ -203,52 +205,50 @@ class Racedayspider(scrapy.Spider):
                 Racedatetime = racedatetime,
                 file_urls = file_urls 
                 )
-            #THE TABLE
-            #eachhorse is response.xpath("//table[@class=\"draggable hiddenable\"]/tr[contains(@class, 'font13 tdAlignC')]")[i].extract()
-            #horseno is response.xpath("//table[@class=\"draggable hiddenable\"]/tr[contains(@class, 'font13 tdAlignC')]")[0].xpath("td[1]").extract()
-            #tablesel = response.xpath("//table[@class=\"draggable hiddenable\"]/tr[contains(@class, 'font13 tdAlignC')]")
-
-            #add items
-            # item = items.HkOddsItem(**meta)
-            # oddsdata = Vividict()
-            # racecoursecode = 'ST' if meta["Racecoursecode"] == 'Sha Tin' else 'HV'
-            # oddsdata = getOddsData(item["Racecoursecode"], racedate, 8)
-            #oddsdata is a dict. race, [place|win], horseno odds, 
-
-            #get runners each race
-
-
-            # runner_items.append(item)
-            # pprint(runner_items)
             runners= response.xpath("//table[@class=\"draggable hiddenable\"]/tr[contains(@class, 'font13 tdAlignC')]")
 
             for r in runners:
                 item = items.RacedayItem()
-                item['HorseNumber'] = r.xpath("td[1]/text()").extract()[0].strip()
+                horsenumber = r.xpath("td[1]/text()").extract()[0].strip()
+                item['HorseNumber'] = try_int(horsenumber)
                 item['Last6runs'] = r.xpath("td[2]/text()").extract()[0].strip()
                 #HorseColors here
-                item['image_urls'] = [r.xpath("td[3]/img/@src").extract()[0].strip(),]
+                item['image_urls'] = [r.xpath("td[3]/img/@src").extract()[0].strip()]
                 item['Horsename'] = r.xpath("td[4]/a/text()").extract()[0].strip()
                 item['Horsecode'] = r.xpath("td[5]/text()").extract()[0].strip()
-                item['ActualWt'] = r.xpath("td[6]/text()").extract()[0].strip()
-                item['Jockeyname'] = r.xpath("td[7]/a/text()").extract()[0].strip()
+                item['ActualWt'] = int(r.xpath("td[6]/text()").extract()[0].strip())
+
+                #what if jockeyname has '()' 
+                jockeyname = r.xpath("td[7]/a/text()").extract()[0].strip()
+                if u'(' in jockeyname:
+                    weightdiff = int(jockeyname.split('(')[1].replace(')', '').strip())
+                    jockeyname = jockeyname.split('(')[0].strip()
+                    item['ActualWt'] += weightdiff    
+                jockeyname = jockeyname if u'(' not in jockeyname else jockeyname.split('(')[0].strip()
+                item['Jockeyname'] = jockeyname
                 item['Jockeycode'] = re.search(r'.*jockeycode=(.*)\',', r.xpath("td[7]/a/@href").extract()[0].strip()).group(1) 
                 item['JockeyWtOver'] = r.xpath("td[8]/text()").extract()[0].strip()
-                item['Draw'] = r.xpath("td[9]/text()").extract()[0].strip()
+                draw = r.xpath("td[9]/text()").extract()[0].strip()
+                item['Draw'] = try_int(draw)
                 item['Trainername'] = r.xpath("td[10]/a/text()").extract()[0].strip()
                 item['Trainercode'] = re.search(r'.*trainercode=(.*)\',', r.xpath("td[10]/a/@href").extract()[0].strip()).group(1)
-                item['Rating'] = r.xpath("td[11]/text()").extract()[0].strip()
-                item['RatingChangeL1'] = r.xpath("td[12]/text()").extract()[0].strip()
-                item['DeclarHorseWt'] = r.xpath("td[13]/text()").extract()[0].strip()
-                item['HorseWtDeclarChange'] = r.xpath("td[14]/text()").extract()[0].strip()
+                rating = r.xpath("td[11]/text()").extract()[0].strip()
+                item['Rating'] = try_int(rating)
+                ratingchangel1 = r.xpath("td[12]/text()").extract()[0].strip()
+                item['RatingChangeL1'] = try_int(ratingchangel1)
+                declarhorsewt = r.xpath("td[13]/text()").extract()[0].strip()
+                item['DeclarHorseWt'] = try_int(declarhorsewt)
+                horsewtdeclarchange = r.xpath("td[14]/text()").extract()[0].strip()
+                item['HorseWtDeclarChange'] = try_int(horsewtdeclarchange)
                 age = int(r.xpath("td[16]/text()").extract()[0].strip())
                 yearofbirth = meta['Racedate'] - relativedelta(years=age)
                 item['Age'] = age
                 item['YearofBirth'] = yearofbirth.year
                 wfa = r.xpath("td[17]/text()").extract()[0].strip()
-                item['WFA'] = wfa if wfa != '-' else None
+                item['WFA'] = try_int(wfa) if wfa != '-' else None
                 item['Sex'] = r.xpath("td[18]/text()").extract()[0].strip()
-                item['SeasonStakes'] = r.xpath("td[19]/text()").extract()[0].strip()
+                seasonstakes = r.xpath("td[19]/text()").extract()[0].strip()
+                item['SeasonStakes'] = try_int(seasonstakes)
                 item['Priority'] = r.xpath("td[20]/text()").extract()[0].strip().replace(u'\xa0', u'')
                 item['Gear'] = r.xpath("td[21]/text()").extract()[0].strip()
                 item['Owner'] = r.xpath("td[22]/text()").extract()[0].strip()

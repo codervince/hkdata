@@ -17,6 +17,8 @@ NEWSPIDER_MODULE = 'hkdata.spiders'
 ITEM_PIPELINES = {
     # "hkjc.pipelines.MyImagesPipeline":1,
     "hkdata.pipelines.ByteStorePipeline":1,
+    # "scrapy.contrib.pipeline.files.FilesPipeline": 5,
+    "hkdata.pipelines.MyFilesPipeline": 5,
     "hkdata.pipelines.SQLAlchemyPipeline": 10
     # 'scrapy.contrib.pipeline.images.ImagesPipeline': 1
     # "hkjc.pipelines.NoInRaceImagePipeLine": 20, 
@@ -77,15 +79,16 @@ USER_AGENT = "Googlebot/2.1 ( http://www.google.com/bot.html)"
 #     "Opera/9.80 (Macintosh; Intel Mac OS X 10.6.8; U; fr) Presto/2.9.168 Version/11.52",
 # ]
 
-
-IMAGES_STORE = '/Users/vmac/RACING/HKG/scrapers/dist/hkjc/images'
+#should store RACEDAY AND INRACE IMAGE FILES
+IMAGES_STORE = '/Users/vmac/Documents/PROGRAMMING/PY/scrapy/HKDATA/hkdata/hkdata/images'
+FILES_STORE = '/Users/vmac/Documents/PROGRAMMING/PY/scrapy/HKDATA/hkdata/hkdata/files'
 #npt filter dups default 'scrapy.dupefilter.RFPDupeFilter'
 # DUPEFILTER_CLASS = 'scrapy.dupefilter.BaseDupeFilter' 
 
 # LOG_FILE = 
 # DUPEFILTER_DEBUG = True
 # WEBSERVICE_PORT = 6090
-WEBSERVICE_LOGFILE = '/Users/vmac/RACING1/HKG/scrapers/dist/hkjc/webservice.log'
+# WEBSERVICE_LOGFILE = '/Users/vmac/RACING1/HKG/scrapers/dist/hkjc/webservice.log'
 
 # 0.25 ms
 DOWNLOAD_DELAY = 1

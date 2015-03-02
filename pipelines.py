@@ -15,6 +15,7 @@ from scrapy.signalmanager import SignalManager
 from scrapy.signals import spider_closed
 from scrapy.xlib.pydispatch import dispatcher
 from scrapy.contrib.pipeline.images import ImagesPipeline
+from scrapy.contrib.pipeline.files import FilesPipeline
 from scrapy.exceptions import DropItem
 
 from sqlalchemy.exc import IntegrityError
@@ -317,6 +318,63 @@ def gethorseprize(placenum, prizemoney):
 #         item['image_urls'] = image_urls
 #         return item 
 
+
+#file goes to desktop, images to db
+#1 type of file: PDF race keep url
+class MyFilesPipeline(FilesPipeline):
+    def file_path(self, request, response=None, info=None):
+        #item=request.meta['item'] # Like this you can use all from item, not just url.
+        # image_id = request.meta.get('file_urls')[0]
+        image_id = request.url.split('/')[-1]
+        # image_id = request.meta.get('Inracename')
+        #get name
+        return 'full/%s' % (image_id)
+
+
+#to overload imagespipeline you myst overload getmedia and itemcompleted
+# see http://stackoverflow.com/questions/27586927/scrapy-cannot-download-picture-to-local
+
+# 2 kinds of images colours (keep name no SHA: racecode) and in race image keep name no SHA
+class MyImagesPipeline(ImagesPipeline):
+   
+    def file_path(self, request, response=None, info=None):
+        #item=request.meta['item'] # Like this you can use all from item, not just url.
+        #http://www.hkjc.com/english/racing/finishphoto.asp?racedate=20141220R1_L.jpg
+        #if raceday then image is unchanged horsecode 
+        if 'RaceCard' in request.url: 
+            image_id = item('Horsecode')
+        else:
+            #results we have an inraceimage
+            # image_id = request.url.split('/')[-1]
+            image_id = item('Inracename')
+        return 'full/%s' % (image_id)
+
+    # def set_filename(self, response):
+    #     # pp.pprint(response.meta)
+    #     theurl = response.meta["RacecourseCode"][0] + response.meta["RaceDate"][0] + response.meta["RaceNumber"][0]
+    #     #add a regex here to check the title is valid for a filename.
+    #     return 'full/{0}.jpg'.format(theurl)   
+
+    # def get_images(self, response, request, info):
+    #     for key, image, buf in super(MyImagesPipeLine, self).get_images(response, request, info):
+    #         key = self.set_filename(response)
+    #     yield key, image, buf
+
+    def get_media_requests(self, item, info):
+        try:
+            for image in item['image_urls']:
+                yield scrapy.Request(image)
+        except:
+            None        
+
+    def item_completed(self, results, item, info):
+        image_urls = [x['image_url'] for ok,x in results if ok]
+        if not image_urls:
+            raise DropItem("no images in this item :(")
+        item['image_urls'] = image_urls
+        return item
+
+
 class SQLAlchemyPipeline(object):
     def __init__(self):
         self.scheduler = DBScheduler()
@@ -425,7 +483,7 @@ class SQLAlchemyPipeline(object):
                                             JockeyWtOver = item["JockeyWtOver"] if item["JockeyWtOver"] != u'' else None,
                                             Rating = item.get("Rating", None),
                                             RatingChangeL1 = int(item["RatingChangeL1"]) if item["RatingChangeL1"] != u'-' else None,
-                                            DeclarHorseWt = item.get("DeclarHorseWt"], None),
+                                            DeclarHorseWt = item.get("DeclarHorseWt", None),
                                             HorseWtDeclarChange = item.get("HorseWtDeclarChange", None),
                                             HorseWtpc = float(item.get("ActualWt", None))/float(item.get("DeclarHorseWt", None)) if item["DeclarHorseWt"] else None,
                                             # Besttime = item["Besttime"],
@@ -433,12 +491,14 @@ class SQLAlchemyPipeline(object):
                                             SeasonStakes = item.get("SeasonStakes", None),
                                             Priority = item.get("Priority", None),
                                            PublicRaceIndex=item["RacecourseCode"] + item["RaceDate"].strftime("%Y%m%d") + str(item["RaceNumber"]) +item["Horsename"],
+                                           HorseColors = item["images"][0]['data'] if item["images"] else None,
                                            hk_gear_id = gearid,
                                            owner_id = ownerid,
                                            hk_race_id=raceid,
                                            jockey_id=jockeyid,
                                            trainer_id=trainerid,
-                                           horse_id=horseid))
+                                           horse_id=horseid
+                                           ))
         returnValue(item)
 
 
