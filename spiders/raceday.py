@@ -8,44 +8,18 @@ import logging
 
 import scrapy
 from scrapy.contrib.spiders import Rule, CrawlSpider
-from scrapy.contrib.loader import ItemLoader
 from scrapy import log
 from scrapy.http import Request
-from scrapy.contrib.loader.processor import TakeFirst
 from scrapy.contrib.linkextractors import LinkExtractor
-from scrapy.contrib.loader.processor import TakeFirst, Compose, Join, MapCompose
 from dateutil.relativedelta import relativedelta
 from time import sleep
 # from ..textxml import *
 from scrapy.log import ScrapyFileLogObserver
 
-from hkdata.items import ResultsItem, RacedayItem
+from hkdata.items import RacedayItemLoader
 
 pp = pprint.PrettyPrinter(indent=4)
 
-
-def tf(values, encoding="utf-8"):
-    value = ""
-    for v in values:
-        if v is not None and v != "":
-            value = v
-            break
-    return value.encode(encoding).strip()
-
-
-def try_int(value):
-    try:
-        return int(value)
-    except:
-        return 0
-
-
-def noentryprocessor(value):
-    return None if value == '' else value
-
-
-def identity(value):
-    return value
 
 
 # USAGE:
@@ -53,19 +27,6 @@ def identity(value):
 # scrapy crawl raceday -a date=20150201 -a coursecode='ST'
 # or latest event scrapy crawl raceday
 
-
-#use if required
-class RacedayItemsLoader(ItemLoader):
-    default_item_class = RacedayItem
-    default_output_processor = Compose(TakeFirst(), unicode, unicode.strip)
-    Draw_out = Compose(default_output_processor, try_int)
-    Place_out = Compose(default_output_processor)
-    HorseNumber_out = Compose(default_output_processor, noentryprocessor)
-    RaceNumber_out = Compose(default_output_processor, try_int)
-    HorseNumber_out = Compose(default_output_processor, try_int)
-    DeclarHorseWt_out = Compose(default_output_processor, try_int)
-    # image_urls_out = MapCompose(_cleanurl) 
-    image_urls_out = Compose(identity)
 
 
 class Racedayspider(scrapy.Spider):
@@ -81,8 +42,6 @@ class Racedayspider(scrapy.Spider):
             self.racedate = kwargs.pop('date')
             self.racecode = kwargs.pop('coursecode')
 
-
-
     def start_requests(self):
         if self.historical:
             if self.filename:
@@ -94,7 +53,6 @@ class Racedayspider(scrapy.Spider):
         else:
             yield Request("http://racing.hkjc.com/racing/Info/meeting/RaceCard/english/Local/")
 
-
     def parse(self, response):
 
         if "No race meeting" in response.body:
@@ -104,7 +62,7 @@ class Racedayspider(scrapy.Spider):
         else:
             from scrapy.shell import inspect_response
             inspect_response(response, self)
-            bl = RacedayItemsLoader(response=response)
+            bl = RacedayItemLoader(response=response)
             racedate, course, num = response.url.split('/')[-3:]
             bl.add_value('RaceDate', racedate)
             bl.add_value('RacecourseCode', course)
@@ -116,10 +74,44 @@ class Racedayspider(scrapy.Spider):
             bl.add_xpath('Surface', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[4]")
             bl.add_xpath('RailType', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[4]")
             bl.add_xpath('Distance', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[4]")
-            bl.add_xpath('Going', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[4]")
-            bl.add_xpath('Prizemoney', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[5]")
-            bl.add_xpath('Raceratingspan', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[5]")
-            bl.add_xpath('Raceclass', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[5]")
+            # bl.add_xpath('Going', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[4]")
+            bl.add_xpath('Prizemoney', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[5]",
+                         re=r'Prize Money: \$(\d*)')
+            bl.add_xpath('Raceratingspan', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[5]",
+                         re=r'Rating:.*?([\d\-]+)')
+            bl.add_xpath('Raceclass', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[5]",
+                         re=r'Class.*?(\d+)')
+            bl.add_xpath('file_urls', '//table[@class="tdAlignL"]//a[2]/@href', re=r'http.+pdf')
+            base_item = bl.load_item()
+            for row in response.xpath("//table[@class='tableBorderBlue tdAlignC']//table/tr[position()>1]"):
+                l = RacedayItemLoader(item=base_item, selector=row)
+                l.add_xpath('HorseNumber', './td[1]/text()')
+                l.add_xpath('Last6runs', './td[2]/text()')
+                l.add_xpath('Horsename', './td[4]/a/text()')
+                l.add_xpath('Horsecode', './td[5]/text()')
+                l.add_xpath('Jockeyname', './td[7]/text()', re=r"(.+?)\(")
+                l.add_xpath('Jockeycode', './td[7]/text()', re=r"\((.+)\)")
+                l.add_xpath('JockeyWtOver', './td[8]/text()')
+                l.add_xpath('Draw', './td[9]/text()')
+                l.add_xpath('Trainername', './td[10]/text()')
+                l.add_xpath('Rating', './td[11]/text()')
+                l.add_xpath('RatingChangeL1', './td[12]/text()')
+                l.add_xpath('DeclarHorseWt', './td[13]/text()')
+                l.add_xpath('HorseWtDeclarChange', './td[14]/text()')
+                l.add_xpath('Age', './td[16]/text()')
+                l.add_xpath('WFA', './td[17]/text()')
+                l.add_xpath('Sex', './td[18]/text()')
+                l.add_xpath('SeasonStakes', './td[19]/text()')
+                l.add_xpath('Priority', './td[20]/text()')
+                l.add_xpath('Gear', './td[21]/text()')
+                l.add_xpath('Owner', './td[22]/text()')
+                l.add_xpath('SireName', './td[23]/text()')
+                l.add_xpath('DamName', './td[24]/text()')
+                l.add_xpath('ImportType', './td[25]/text()')
+                yield l.load_item()
+                break
+
+
 
 
 

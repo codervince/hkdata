@@ -16,9 +16,9 @@ NEWSPIDER_MODULE = 'hkdata.spiders'
 # ITEM_PIPELINES = {'scrapy.contrib.pipeline.images.ImagesPipeline': 1}
 ITEM_PIPELINES = {
     # "hkjc.pipelines.MyImagesPipeline":1,
-    "hkdata.pipelines.ByteStorePipeline":1,
+    # "hkdata.pipelines.ByteStorePipeline":1,
     # "scrapy.contrib.pipeline.files.FilesPipeline": 5,
-    "hkdata.pipelines.MyFilesPipeline": 5,
+    # "hkdata.pipelines.MyFilesPipeline": 5,
     # "hkdata.pipelines.SQLAlchemyPipeline": 10
     # 'scrapy.contrib.pipeline.images.ImagesPipeline': 1
     # "hkjc.pipelines.NoInRaceImagePipeLine": 20, 

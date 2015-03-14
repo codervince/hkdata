@@ -6,6 +6,10 @@
 # http://doc.scrapy.org/en/latest/topics/items.html
 
 import scrapy
+from scrapy.contrib.loader import ItemLoader
+from scrapy.contrib.loader.processor import TakeFirst
+from scrapy.contrib.loader.processor import TakeFirst, Compose, Join, Identity,  MapCompose
+from datetime import datetime
 
 #raceday has maximum fields
 class RacedayItem(scrapy.Item):
@@ -122,4 +126,60 @@ class ResultsItem(scrapy.Item):
     TripleTrio112Div = scrapy.Field()
     SixUpDiv = scrapy.Field()
     SixUpBonusDiv = scrapy.Field()
+
+def tf(values, encoding="utf-8"):
+    value = ""
+    for v in values:
+        if v is not None and v != "":
+            value = v
+            break
+    return value.encode(encoding).strip()
+
+
+def try_int(value):
+    try:
+        return int(value)
+    except:
+        return 0
+
+
+def noentryprocessor(value):
+    return None if value == '' else value
+
+
+def identity(value):
+    return value
+
+class RacedayItemLoader(ItemLoader):
+    default_item_class = RacedayItem
+    default_output_processor = Compose(TakeFirst(), unicode, unicode.strip)
+    file_urls_out = Identity()
+    tf = TakeFirst()
+
+    def race_date_time(value):
+        return datetime.strptime(value, '%B %d, %Y %H:%M')
+
+    RaceDateTime_out = Compose(Join(' '), race_date_time)
+
+    @classmethod
+    def get_delimited_data(cls, value):
+        try:
+            return [s.strip() for s in cls.tf(value).strip().split(', ')]
+        except:
+            return []
+
+    @classmethod
+    def Surface_out(cls, value):
+        data = cls.get_delimited_data(value)
+        return data[0]
+
+    @classmethod
+    def RailType_out(cls, value):
+        data = cls.get_delimited_data(value)
+        return data[1] if data[0] != 'All Weather Track' else None
+
+    @classmethod
+    def Distance_out(cls, value):
+        data = cls.get_delimited_data(value)
+        return data[-2]
 
