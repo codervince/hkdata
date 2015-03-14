@@ -19,7 +19,7 @@ ITEM_PIPELINES = {
     "hkdata.pipelines.ByteStorePipeline":1,
     # "scrapy.contrib.pipeline.files.FilesPipeline": 5,
     "hkdata.pipelines.MyFilesPipeline": 5,
-    "hkdata.pipelines.SQLAlchemyPipeline": 10
+    # "hkdata.pipelines.SQLAlchemyPipeline": 10
     # 'scrapy.contrib.pipeline.images.ImagesPipeline': 1
     # "hkjc.pipelines.NoInRaceImagePipeLine": 20, 
 }

@@ -14,8 +14,7 @@ from datetime import datetime
 from time import sleep
 from fractions import Fraction
 import re
-import pprint
-import logging
+import csv
 
 import itertools
 
@@ -165,19 +164,11 @@ class ResultsSpider(scrapy.Spider):
     allowed_domains = ["hkjc.com"]
     start_url = "http://racing.hkjc.com/racing/Info/meeting/Results/english/Local/%s/%s/1"
     
-    #scrapyd safe
     def __init__(self, **kwargs):
-        for k,v in kwargs.items():
-            self.racedate = kwargs.get('date')
-            self.racecode = kwargs.get('coursecode')
-    # def __init__(self, date=None, coursecode=None,**kwargs):
-        # if date is None or coursecode is None:
-        #     raise ValueError("Invalid spider parameters")
-        # self.racedate = date
-        # self.racecode = coursecode
-        # logfile = open('testlog2.log', 'w')
-        # log_observer = ScrapyFileLogObserver(logfile, level=logging.DEBUG)
-        # log_observer.start()
+        self.filename = kwargs.pop('filename', None)
+        if not self.filename:
+            self.racedate = kwargs.pop('date')
+            self.racecode = kwargs.pop('coursecode')
 
     def parse(self, response):
         if not len(response.css("table.draggable").xpath(".//tr[@class='trBgGrey' or @class='trBgWhite']")):
@@ -423,5 +414,10 @@ class ResultsSpider(scrapy.Spider):
 
 
     def start_requests(self):
-        return [Request(self.start_url % (self.racedate, self.racecode))]
+        if self.filename:
+            with open(self.filename, mode='r') as inh:
+                for row in csv.reader(inh):
+                    yield Request(self.start_url % (row[0], row[1]))
+        else:
+            yield Request(self.start_url % (self.racedate, self.racecode))
 
