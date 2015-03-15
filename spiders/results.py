@@ -3,172 +3,36 @@ import scrapy
 from scrapy import log
 from scrapy.http import Request
 from scrapy.contrib.linkextractors import LinkExtractor
-from scrapy.contrib.loader import ItemLoader
-from scrapy.contrib.loader.processor import TakeFirst, Compose, Join, MapCompose
-from scrapy.log import ScrapyFileLogObserver
 
 
 # from scrapy.contrib.loader.processor import MapCompose
-from hkdata.items import ResultsItem, RacedayItem
-from datetime import datetime
+from hkdata.items import ResultsItemLoader
 from time import sleep
-from fractions import Fraction
-import re
 import csv
-
+from urlparse import urljoin
 import itertools
-
-def getHorseReport(ir, h):
-    lir = ir.split('.')
-    return [e.replace(".\\n", "...") for e in lir if h in e]
-
-
-#done in default output processor?
-def noentryprocessor(value):
-    return None if value == '' else value
-
-
-
-def timeprocessor(value):
-    #tries for each possible format
-    for format in ("%S.%f", "%M.%S.%f", "%S"):
-        try:
-            return datetime.strptime(value, format).time()
-        except:
-            pass
-    return None
-
-#dead heats
-def processplace(place):
-    # r_dh = r'.*[0-9].*DH$'
-    if place is None:
-        return None
-    if "DH" in place:
-        return int(place.replace("DH", ''))
-    else:
-        return 
-        {
-    "WV": 99,
-    "WV-A": 99,
-    "WX": 99,
-    "WX-A": 99,
-    "UV": 99,
-    "DISQ": 99,
-    "FE": 99,
-    "DNF":99,
-    "PU": 99,
-    "TNP":99,
-    "UR": 99,
-    }.get(str(place), int(place))
-
- #add Fractionprocessor here to convert fractions to ints for SecDBL and LBW  
-def horselengthprocessor(value):
-    #covers '' and '-'
-
-    if '---' in value:
-        return None
-    elif value == '-':
-        #winner
-        return 0.0
-    elif "-" in value and len(value) > 1:
-        return float(Fraction(value.split('-')[0]) + Fraction(value.split('-')[1]))
-    elif value == 'N':
-        return 0.3
-    elif value == 'SH':
-        return 0.1
-    elif value == 'HD':
-        return 0.2
-    elif value == 'SN':
-        return 0.25  
-    #nose?           
-    elif value == 'NOSE':
-        return 0.05
-    elif '/' in value:
-         return float(Fraction(value))        
-    elif value.isdigit():
-        return try_float(value)
-    else:
-        return None   
-
-def didnotrun(value):
-    if "---" in value:
-        return None
-
-
-def try_float(value):
-    try:
-        return float(value)
-    except:
-        return 0.0
-
-def try_int(value):
-    try:
-        return int(value)
-    except:
-        return 0
-
-#for scratched gets None
-def try_placeint(value):
-    try:
-        return int(value)
-    except:
-        return None 
-
-
-def identity(value):
-    return value
-
-# def _cleanurl(value):
-#     return value
-
-# class RaceItemsLoader(ItemLoader):
-#     default_item_class = ResultsItem
-    # default_output_processor = Compose(TakeFirst(), unicode, unicode.strip)        
-
-
-class ResultsItemsLoader(ItemLoader):
-    default_item_class = ResultsItem
-    default_output_processor = Compose(TakeFirst(), unicode, unicode.strip)
-    Winodds_out = Compose(default_output_processor, try_float)
-    FinishTime_out = Compose(default_output_processor, timeprocessor)
-    Sec1time_out = Compose(default_output_processor, timeprocessor)
-    Sec2time_out = Compose(default_output_processor, timeprocessor)
-    Sec3time_out = Compose(default_output_processor, timeprocessor)
-    Sec4time_out = Compose(default_output_processor, timeprocessor)
-    Sec5time_out = Compose(default_output_processor, timeprocessor)
-    Sec6time_out = Compose(default_output_processor, timeprocessor)
-    LBW_out = Compose(default_output_processor, horselengthprocessor)
-    Draw_out = Compose(default_output_processor, try_int)
-    Place_out = Compose(default_output_processor)
-    # Place_out = Compose(default_output_processor)
-    # PlaceNum_out = Compose(default_output_processor)
-    HorseNumber_out = Compose(default_output_processor, noentryprocessor)
-    Sec1DBL_out = Compose(default_output_processor, horselengthprocessor)
-    Sec2DBL_out = Compose(default_output_processor, horselengthprocessor)
-    Sec3DBL_out = Compose(default_output_processor, horselengthprocessor)
-    Sec4DBL_out = Compose(default_output_processor, horselengthprocessor)
-    Sec5DBL_out = Compose(default_output_processor, horselengthprocessor)
-    Sec6DBL_out = Compose(default_output_processor, horselengthprocessor)
-    RaceNumber_out = Compose(default_output_processor, try_int)
-    HorseNumber_out = Compose(default_output_processor, try_int)
-    DeclarHorseWt_out = Compose(default_output_processor, try_int)
-
-    # image_urls_out = MapCompose(_cleanurl) 
-    RunningPosition_out = Join(' ')
-    image_urls_out = Compose(identity)
-   
 
 
 class ResultsSpider(scrapy.Spider):
     name = "results"
     allowed_domains = ["hkjc.com"]
     start_url = "http://racing.hkjc.com/racing/Info/meeting/Results/english/Local/%s/%s/1"
-    
+
     def __init__(self, **kwargs):
         self.filename = kwargs.pop('filename', None)
         if not self.filename:
             self.racedate = kwargs.pop('date')
             self.racecode = kwargs.pop('coursecode')
+
+
+    def start_requests(self):
+        if self.filename:
+            with open(self.filename, mode='r') as inh:
+                for row in csv.reader(inh):
+                    yield Request(self.start_url % (row[0], row[1]))
+        else:
+            yield Request(self.start_url % (self.racedate, self.racecode))
+
 
     def parse(self, response):
         if not len(response.css("table.draggable").xpath(".//tr[@class='trBgGrey' or @class='trBgWhite']")):
@@ -176,8 +40,61 @@ class ResultsSpider(scrapy.Spider):
             sleep(2)
             yield Request(response.url, dont_filter=True)
         else:
-            for link in LinkExtractor(restrict_xpaths="//div[contains(@class,'raceNum')]", deny=(r'.*/Simulcast/.*')).extract_links(response)[:-1]:
-                yield Request(link.url)
+            # for link in LinkExtractor(restrict_xpaths="//div[contains(@class,'raceNum')]", deny=(r'.*/Simulcast/.*')).extract_links(response)[:-1]:
+            # yield Request(link.url)
+            bl = ResultsItemLoader(response=response)
+            racedate, course, num = response.url.split('/')[-3:]
+            bl.add_value('Url', response.url)
+            bl.add_value('RaceDate', racedate)
+            bl.add_value('RacecourseCode', course)
+            bl.add_value('RaceNumber', num)
+            bl.add_xpath('RaceIndex', '//div[@class="boldFont14 color_white trBgBlue"]//text()', re='\((\d+)\)')
+            bl.add_xpath('Going',
+                         "//table[@class='tableBorder0 font13']//td[contains(text(),'Going')]/following-sibling::td/text()")
+            bl.add_xpath('image_urls', "//table[@class='tableBorder0 trBgBlue']//img/@src",
+                         lambda x: [urljoin(response.url, s) for s in x if '/RaceResult/' in s])
+            bl.add_xpath('IncidentReport', '//table[@class="tableBorder trBgBlue"]//td[@class="lineH18 padding trBgBlue2"]/text()')
+            base_item = bl.load_item()
+            horses = list()
+            for row in response.xpath("//table[@class='tableBorder trBgBlue tdAlignC number12 draggable']//tr[position()>1]"):
+                l = ResultsItemLoader(item=base_item, selector=row)
+                l.add_xpath('Place', './td[1]/text()')
+                l.add_xpath('HorseNumber', './td[2]/text()')
+                l.add_xpath('Jockey', './td[4]/a/text()')
+                l.add_xpath('LBW', './td[9]/text()')
+                l.add_xpath('RunningPosition', './td[10]/text()')
+                l.add_xpath('FinishTime', './td[11]/text()')
+                l.add_xpath('Winodds', './td[12]/text()')
+                i = l.load_item()
+                horses.append(i)
+
+            for link in LinkExtractor(restrict_xpaths="//img[contains(@src,'sectional_time')]/..").extract_links(response):
+                yield Request(link.url, callback=self.parse_sectional, meta=dict(horses=horses))
+
+    def parse_sectional(self, response):
+        table_data = response.meta["horses"]
+        for item, tr in itertools.izip_longest(table_data,
+                                               response.xpath("//table[@cellspacing=1 and @width='100%']//td[@rowspan=2]/..")):
+            try:
+                ntr = tr.xpath("./following-sibling::tr[1]")
+                l = ResultsItemLoader(item=item, selector=tr)
+                for i in range(4, 10):
+                    j = i - 3
+                    l.add_xpath("Sec%sDBL" % j, "./td[%s]/table/tr/td[2]/text()" % i)
+                    l.add_xpath("Sec%stime" % j, "./following-sibling::tr[1]/td[%s]/text()" % j)
+            except:
+                l = ResultsItemLoader(item=item, selector=tr)
+            yield l.load_item()
+
+
+
+
+
+
+
+
+
+"""
             table_data = list()
             #Race ItemsLoader
             
@@ -413,11 +330,5 @@ class ResultsSpider(scrapy.Spider):
             yield l.load_item()
 
 
-    def start_requests(self):
-        if self.filename:
-            with open(self.filename, mode='r') as inh:
-                for row in csv.reader(inh):
-                    yield Request(self.start_url % (row[0], row[1]))
-        else:
-            yield Request(self.start_url % (self.racedate, self.racecode))
 
+"""

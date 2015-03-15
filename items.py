@@ -10,6 +10,8 @@ from scrapy.contrib.loader import ItemLoader
 from scrapy.contrib.loader.processor import TakeFirst
 from scrapy.contrib.loader.processor import TakeFirst, Compose, Join, Identity,  MapCompose
 from datetime import datetime
+from fractions import Fraction
+import re
 
 #raceday has maximum fields
 class RacedayItem(scrapy.Item):
@@ -55,6 +57,170 @@ class RacedayItem(scrapy.Item):
     ImportType = scrapy.Field()
     file_urls = scrapy.Field()
     files = scrapy.Field()
+
+
+def tf(values, encoding="utf-8"):
+    value = ""
+    for v in values:
+        if v is not None and v != "":
+            value = v
+            break
+    return value.encode(encoding).strip()
+
+
+def try_int(value):
+    try:
+        return int(value)
+    except:
+        return 0
+
+def try_float(value):
+    try:
+        return float(value)
+    except:
+        return 0.0
+
+
+def noentryprocessor(value):
+    return None if value == '' else value
+
+
+class RacedayItemLoader(ItemLoader):
+    default_item_class = RacedayItem
+    default_output_processor = Compose(TakeFirst(), unicode, unicode.strip)
+    file_urls_out = Identity()
+    tf = TakeFirst()
+
+    def race_date_time(value):
+        return datetime.strptime(value, '%B %d, %Y %H:%M')
+
+    RaceDateTime_out = Compose(Join(' '), race_date_time)
+
+    @classmethod
+    def get_delimited_data(cls, value):
+        try:
+            return [s.strip() for s in cls.tf(value).strip().split(', ')]
+        except:
+            return []
+
+    @classmethod
+    def Surface_out(cls, value):
+        data = cls.get_delimited_data(value)
+        return data[0]
+
+    @classmethod
+    def RailType_out(cls, value):
+        data = cls.get_delimited_data(value)
+        return data[1] if data[0] != 'All Weather Track' else None
+
+    @classmethod
+    def Distance_out(cls, value):
+        data = cls.get_delimited_data(value)
+        return data[-2]
+
+    int_processor = Compose(default_output_processor, try_int)
+
+    Draw_out = int_processor
+    Place_out = Compose(default_output_processor)
+    HorseNumber_out = int_processor
+    RaceNumber_out = int_processor
+    HorseNumber_out = int_processor
+    HorseWtDeclarChange_out = int_processor
+    Rating_out = int_processor
+
+#######################################
+#######################################
+#######################################
+#######################################
+#######################################
+#######################################
+#######################################
+#######################################
+#######################################
+#######################################
+#######################################
+
+def getHorseReport(ir, h):
+    lir = ir.split('.')
+    return [e.replace(".\\n", "...") for e in lir if h in e]
+
+
+
+def timeprocessor(value):
+    #tries for each possible format
+    for format in ("%S.%f", "%M.%S.%f", "%S"):
+        try:
+            return datetime.strptime(value, format).time()
+        except:
+            pass
+    return None
+
+#dead heats
+def processplace(place):
+    # r_dh = r'.*[0-9].*DH$'
+    if place is None:
+        return None
+    if "DH" in place:
+        return int(place.replace("DH", ''))
+    else:
+        return {
+    "WV": 99,
+    "WV-A": 99,
+    "WX": 99,
+    "WX-A": 99,
+    "UV": 99,
+    "DISQ": 99,
+    "FE": 99,
+    "DNF":99,
+    "PU": 99,
+    "TNP":99,
+    "UR": 99,
+    }.get(str(place), int(place))
+
+ #add Fractionprocessor here to convert fractions to ints for SecDBL and LBW
+def horselengthprocessor(value):
+    #covers '' and '-'
+
+    if '---' in value:
+        return None
+    elif value == '-':
+        #winner
+        return 0.0
+    elif "-" in value and len(value) > 1:
+        return float(Fraction(value.split('-')[0]) + Fraction(value.split('-')[1]))
+    elif value == 'N':
+        return 0.3
+    elif value == 'SH':
+        return 0.1
+    elif value == 'HD':
+        return 0.2
+    elif value == 'SN':
+        return 0.25
+    #nose?
+    elif value == 'NOSE':
+        return 0.05
+    elif '/' in value:
+         return float(Fraction(value))
+    elif value.isdigit():
+        return try_float(value)
+    else:
+        return None
+
+def didnotrun(value):
+    if "---" in value:
+        return None
+
+
+
+
+
+
+# def _cleanurl(value):
+#     return value
+
+# class RaceItemsLoader(ItemLoader):
+#     default_item_class = ResultsItem
+    # default_output_processor = Compose(TakeFirst(), unicode, unicode.strip)
 
 class ResultsItem(scrapy.Item):
     Url = scrapy.Field()
@@ -127,59 +293,37 @@ class ResultsItem(scrapy.Item):
     SixUpDiv = scrapy.Field()
     SixUpBonusDiv = scrapy.Field()
 
-def tf(values, encoding="utf-8"):
-    value = ""
-    for v in values:
-        if v is not None and v != "":
-            value = v
-            break
-    return value.encode(encoding).strip()
 
-
-def try_int(value):
-    try:
-        return int(value)
-    except:
-        return 0
-
-
-def noentryprocessor(value):
-    return None if value == '' else value
-
-
-def identity(value):
-    return value
-
-class RacedayItemLoader(ItemLoader):
-    default_item_class = RacedayItem
+class ResultsItemLoader(ItemLoader):
+    default_item_class = ResultsItem
     default_output_processor = Compose(TakeFirst(), unicode, unicode.strip)
-    file_urls_out = Identity()
-    tf = TakeFirst()
+    time_processor = Compose(default_output_processor, timeprocessor)
+    horselength  = Compose(default_output_processor, horselengthprocessor)
+    intprocessor = Compose(default_output_processor, try_int)
+    noentry = Compose(default_output_processor, noentryprocessor)
 
-    def race_date_time(value):
-        return datetime.strptime(value, '%B %d, %Y %H:%M')
+    Winodds_out = Compose(default_output_processor, try_float)
+    FinishTime_out = time_processor
+    Sec1time_out = time_processor
+    Sec2time_out = time_processor
+    Sec3time_out = time_processor
+    Sec4time_out = time_processor
+    Sec5time_out = time_processor
+    Sec6time_out = time_processor
+    LBW_out = horselength
+    Draw_out =intprocessor
+    # Place_out = Compose(default_output_processor)
+    HorseNumber_out = noentry
+    Sec1DBL_out = horselength
+    Sec2DBL_out = horselength
+    Sec3DBL_out = horselength
+    Sec4DBL_out = horselength
+    Sec5DBL_out = horselength
+    Sec6DBL_out = horselength
+    RaceNumber_out = intprocessor
+    HorseNumber_out = intprocessor
+    DeclarHorseWt_out = intprocessor
 
-    RaceDateTime_out = Compose(Join(' '), race_date_time)
-
-    @classmethod
-    def get_delimited_data(cls, value):
-        try:
-            return [s.strip() for s in cls.tf(value).strip().split(', ')]
-        except:
-            return []
-
-    @classmethod
-    def Surface_out(cls, value):
-        data = cls.get_delimited_data(value)
-        return data[0]
-
-    @classmethod
-    def RailType_out(cls, value):
-        data = cls.get_delimited_data(value)
-        return data[1] if data[0] != 'All Weather Track' else None
-
-    @classmethod
-    def Distance_out(cls, value):
-        data = cls.get_delimited_data(value)
-        return data[-2]
-
+    # image_urls_out = MapCompose(_cleanurl)
+    RunningPosition_out = Join(' ')
+    image_urls_out = MapCompose(lambda x: x.replace('_S.', '_L.'))

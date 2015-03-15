@@ -55,13 +55,14 @@ class Racedayspider(scrapy.Spider):
 
     def parse(self, response):
 
-        if "No race meeting" in response.body:
+        if "Click to open" not in response.body:
             log.msg("Results page not ready, waiting 2 secs...", logLevel=log.INFO)
             sleep(2)
             yield Request(response.url, dont_filter=True)
         else:
-            from scrapy.shell import inspect_response
-            inspect_response(response, self)
+            for link in LinkExtractor(restrict_xpaths="//div[contains(@class,'raceNum')]",
+                                      deny=(r'.*/Simulcast/.*',)).extract_links(response):
+                yield Request(link.url)
             bl = RacedayItemLoader(response=response)
             racedate, course, num = response.url.split('/')[-3:]
             bl.add_value('RaceDate', racedate)
@@ -110,6 +111,19 @@ class Racedayspider(scrapy.Spider):
                 l.add_xpath('ImportType', './td[25]/text()')
                 yield l.load_item()
                 break
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
