@@ -9,13 +9,17 @@ import scrapy
 from scrapy.contrib.loader import ItemLoader
 from scrapy.contrib.loader.processor import TakeFirst
 from scrapy.contrib.loader.processor import TakeFirst, Compose, Join, Identity,  MapCompose
-from datetime import datetime
+from datetime import datetime, timedelta
 from fractions import Fraction
+from decimal import Decimal
 import re
+from re import sub
+import unicodedata
 
 #raceday has maximum fields
 class RacedayItem(scrapy.Item):
     RaceDate = scrapy.Field() #used for public index only
+    LocalRaceDateTime= scrapy.Field()
     RaceDateTime = scrapy.Field()
     RacecourseCode = scrapy.Field()
     RaceName = scrapy.Field()
@@ -27,14 +31,15 @@ class RacedayItem(scrapy.Item):
     Distance = scrapy.Field()
     RaceNumber = scrapy.Field()
     HorseNumber = scrapy.Field()
+    Wt = scrapy.Field()
     Last6runs = scrapy.Field()
     image_urls = scrapy.Field()
     images = scrapy.Field()
     Horsename = scrapy.Field()
     Horsecode = scrapy.Field()
-    ActualWt = scrapy.Field()
     Jockeyname = scrapy.Field()
     Jockeycode = scrapy.Field()
+    Jockeyclaim = scrapy.Field()
     JockeyWtOver = scrapy.Field()
     Draw = scrapy.Field()
     Trainername = scrapy.Field()
@@ -45,7 +50,6 @@ class RacedayItem(scrapy.Item):
     HorseWtDeclarChange = scrapy.Field()
     # Besttime = scrapy.Field()
     Age = scrapy.Field()
-    YearofBirth = scrapy.Field()
     WFA = scrapy.Field()
     Sex = scrapy.Field()
     SeasonStakes = scrapy.Field()
@@ -80,6 +84,18 @@ def try_float(value):
     except:
         return 0.0
 
+def removeunicode(value):
+    return value.encode('ascii', 'ignore')
+
+def tidymoney(money):
+    return Decimal(sub(r'[^\d.]', '', money))
+
+def squeezespaces(value):
+    return re.sub(r"\s\s+", "", value, flags=re.UNICODE)
+
+def removem(value):
+    if 'm' in value:
+        return value.replace('m', '')
 
 def noentryprocessor(value):
     return None if value == '' else value
@@ -94,7 +110,12 @@ class RacedayItemLoader(ItemLoader):
     def race_date_time(value):
         return datetime.strptime(value, '%B %d, %Y %H:%M')
 
-    RaceDateTime_out = Compose(Join(' '), race_date_time)
+    def race_date_time_utc(value):
+        #HKG is always plus 8
+        return value - timedelta(hours=8)
+
+    LocalRaceDateTime_out = Compose(Join(' '), race_date_time)
+    RaceDateTime_out = Compose(Join(' '), race_date_time,race_date_time_utc)
 
     @classmethod
     def get_delimited_data(cls, value):
@@ -127,7 +148,17 @@ class RacedayItemLoader(ItemLoader):
     HorseNumber_out = int_processor
     HorseWtDeclarChange_out = int_processor
     Rating_out = int_processor
-
+    DeclarHorseWt_out = int_processor
+    RatingChangeL1_out = int_processor
+    SeasonStakes_out = int_processor
+    Age_out = int_processor
+    Distance_out = Compose(removem, int_processor)
+    Owner_out = Compose(default_output_processor, squeezespaces)
+    Priority_out= Compose(default_output_processor, removeunicode)
+    Prizemoney_out= Compose(default_output_processor, tidymoney)
+    Jockeyclaim_out = int_processor
+    Wt_out = int_processor
+    JockeyWtOver_out = int_processor
 #######################################
 #######################################
 #######################################

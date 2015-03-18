@@ -15,11 +15,11 @@ NEWSPIDER_MODULE = 'hkdata.spiders'
 
 # ITEM_PIPELINES = {'scrapy.contrib.pipeline.images.ImagesPipeline': 1}
 ITEM_PIPELINES = {
-    # "hkjc.pipelines.MyImagesPipeline":1,
+    # "hkdata.pipelines.MyImagesPipeline":1,
     # "hkdata.pipelines.ByteStorePipeline":1,
     # "scrapy.contrib.pipeline.files.FilesPipeline": 5,
     # "hkdata.pipelines.MyFilesPipeline": 5,
-    # "hkdata.pipelines.SQLAlchemyPipeline": 10
+    "hkdata.pipelines.NewSQLAlchemyPipeline": 1
     # 'scrapy.contrib.pipeline.images.ImagesPipeline': 1
     # "hkjc.pipelines.NoInRaceImagePipeLine": 20, 
 }
@@ -50,7 +50,7 @@ DATABASE = {'drivername': 'postgres',
             'port': '5432',
             'username': 'vmac',
             'password': '',
-            'database': 'hkraces22'}
+            'database': 'hkraces2'}
 
 #mysql testing
 #DATABASE = {'drivername': 'sqlite', 'database': 'db.sqlite'}

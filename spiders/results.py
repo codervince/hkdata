@@ -60,6 +60,7 @@ class ResultsSpider(scrapy.Spider):
                 l = ResultsItemLoader(item=base_item, selector=row)
                 l.add_xpath('Place', './td[1]/text()')
                 l.add_xpath('HorseNumber', './td[2]/text()')
+                l.add_xpath('HorseCode', './td[3]/a/@href',re=r"horseno=(.+)")
                 l.add_xpath('Jockey', './td[4]/a/text()')
                 l.add_xpath('LBW', './td[9]/text()')
                 l.add_xpath('RunningPosition', './td[10]/text()')

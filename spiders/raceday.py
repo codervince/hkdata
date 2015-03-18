@@ -68,6 +68,8 @@ class Racedayspider(scrapy.Spider):
             bl.add_value('RaceDate', racedate)
             bl.add_value('RacecourseCode', course)
             bl.add_value('RaceNumber', num)
+            bl.add_xpath('LocalRaceDateTime', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[3]",
+                         re=r",.+?(\S+\s+\d{2},\s+\d{4}),.+?,.+?(\d{2}:\d{2})")
             bl.add_xpath('RaceDateTime', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[3]",
                          re=r",.+?(\S+\s+\d{2},\s+\d{4}),.+?,.+?(\d{2}:\d{2})")
             bl.add_xpath('RaceName', "//table[@class='font13 lineH20 tdAlignL']//td[1]/span[@class='bold']/text()",
@@ -77,7 +79,7 @@ class Racedayspider(scrapy.Spider):
             bl.add_xpath('Distance', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[4]")
             # bl.add_xpath('Going', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[4]")
             bl.add_xpath('Prizemoney', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[5]",
-                         re=r'Prize Money: \$(\d*)')
+                         re=r'Prize Money: \$([\d,]*)')
             bl.add_xpath('Raceratingspan', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[5]",
                          re=r'Rating:.*?([\d\-]+)')
             bl.add_xpath('Raceclass', "(//table[@class='font13 lineH20 tdAlignL']//td[1]/text())[5]",
@@ -90,11 +92,13 @@ class Racedayspider(scrapy.Spider):
                 l.add_xpath('Last6runs', './td[2]/text()')
                 l.add_xpath('Horsename', './td[4]/a/text()')
                 l.add_xpath('Horsecode', './td[5]/text()')
-                l.add_xpath('Jockeyname', './td[7]/text()', re=r"(.+?)\(")
-                l.add_xpath('Jockeycode', './td[7]/text()', re=r"\((.+)\)")
+                l.add_xpath('Wt', './td[6]/text()')
+                l.add_xpath('Jockeyname', './td[7]/a/text()', re=r"(.+?)\(")
+                l.add_xpath('Jockeyclaim', './td[7]/a/text()', re=r"\((.+)\)")
+                l.add_xpath('Jockeycode', './td[7]/a/@href/text()', re=r"jockeycode=([A-Z]+)")
                 l.add_xpath('JockeyWtOver', './td[8]/text()')
                 l.add_xpath('Draw', './td[9]/text()')
-                l.add_xpath('Trainername', './td[10]/text()')
+                l.add_xpath('Trainername', './td[10]/a/text()')
                 l.add_xpath('Rating', './td[11]/text()')
                 l.add_xpath('RatingChangeL1', './td[12]/text()')
                 l.add_xpath('DeclarHorseWt', './td[13]/text()')

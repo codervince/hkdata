@@ -24,12 +24,12 @@ from twisted.python.threadpool import ThreadPool
 from hkdata.items import *
 from hkdata.models import *
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.orm import sessionmaker, scoped_session,exc, create_session
 from sqlalchemy.sql.expression import ClauseElement
 
 
 # Needed for multithreading, as I remember
-Session = scoped_session(sessionmaker(bind=engine))
+# Session = scoped_session(sessionmaker(bind=engine))
 
 
 def get_or_create(model, defaults=None, **kwargs):
@@ -294,14 +294,14 @@ def gethorseprize(placenum, prizemoney):
 
 #file goes to desktop, images to db
 #1 type of file: PDF race keep url
-class MyFilesPipeline(FilesPipeline):
-    def file_path(self, request, response=None, info=None):
-        #item=request.meta['item'] # Like this you can use all from item, not just url.
-        # image_id = request.meta.get('file_urls')[0]
-        image_id = request.url.split('/')[-1]
-        # image_id = request.meta.get('Inracename')
-        #get name
-        return 'full/%s' % (image_id)
+# class MyFilesPipeline(FilesPipeline):
+#     def file_path(self, request, response=None, info=None):
+#         #item=request.meta['item'] # Like this you can use all from item, not just url.
+#         # image_id = request.meta.get('file_urls')[0]
+#         image_id = request.url.split('/')[-1]
+#         # image_id = request.meta.get('Inracename')
+#         #get name
+#         return 'full/%s' % (image_id)
 
 
 #to overload imagespipeline you myst overload getmedia and itemcompleted
@@ -347,306 +347,446 @@ class MyImagesPipeline(ImagesPipeline):
         return item
 
 
-class SQLAlchemyPipeline(object):
+class NewSQLAlchemyPipeline(object):
+    
     def __init__(self):
-        self.scheduler = DBScheduler()
 
-    @inlineCallbacks
+        engine = create_engine(URL(**settings.DATABASE))
+        create_tables(engine)
+        self.Session = sessionmaker(bind=engine)
+        self.cache = defaultdict(lambda: defaultdict(lambda: None))
+        session = create_session(bind=engine)
+        testlist = session.query(HKRace).all()
+        for test in testlist:
+            print(test.RaceDate)
+
+
     def process_item(self, item, spider):
+        session = self.Session()
 
-        if isinstance(item, RacedayItem):
-            gearid = self.scheduler.get_id(
-                Gear, "Name",
-                {
-                    "Name": item["Gear"]
-                })
+        raceclassid = self.get_id(session,
+            Raceclass, "Name",
+            {
+            "Name": item.get("Raceclass", None)
+            })
 
-            ownerid = self.scheduler.get_id(
-                Owner, "Name",
-                {
-                    "Name": item["Owner"],
-                    "Homecountry": 'HKG'
-                })
+        railtypeid = self.get_id(session,
+        Railtype, "Name",
+        {
+        "Name": item.get("Railtype", None)
+        })
+        goingid = self.get_id(session,
+        Going, "Name",
+        {
+        "Name": item.get("Going", None)
+        })
+        distanceid = self.get_id(session,
+        Distance, "MetricName",
+        {
+        "MetricName": int(item.get("Distance", 0)),
+        "Miles": float(float(item.get("Distance", 0)) / 1600.0),
+        "Furlongs": int(int(item.get("Distance", 0)) / 200),
+        "Yards": int(int(item.get("Distance", 0))/1760)
+        })
 
-            jockeyid = self.scheduler.get_id(
-                Jockey, "Name",
-                {
-                    "Name": item["Jockeyname"],
-                    "Code": item["Jockeycode"],
-                    "Homecountry": 'HKG'
-                })
-
-            trainerid = self.scheduler.get_id(
-                Trainer, "Name",
-                {
-                    "Name": item["Trainername"],
-                    "Code": item["Trainercode"],
-                    "Homecountry": 'HKG'
-                })
-
-            horseid = self.scheduler.get_id(
-                Horse, "Name", {
-                    "Name": item["Horsename"],
-                    "Code": item["Horsecode"],
-                    "SireName": item["SireName"],
-                    "DamName": item.get("DamName", None),
-                    "ImportType": item.get("ImportType", None),
-                    "Sex": item.get("Sex", None),
-                    "Homecountry": 'HKG',
-                    "YearofBirth": item["YearofBirth"]
-                })
-            railtypeid = self.scheduler.get_id(
-                Railtype, "Name", {
-                    "Name": item.get("Railtype", None)
-                })
-
-            raceclassid = self.scheduler.get_id(
-                Raceclass, "Name", {
-                    "Name": item.get("Raceclass", None)
-                })
-
-            distanceid = self.scheduler.get_id(
-                Distance, "MetricName", {
-                    "MetricName": int(item.get("Distance", 0)),
-                    "Miles": float(float(item.get("Distance", 0)) / 1600.0),
-                    "Furlongs": int(int(item.get("Distance", 0)) / 200)
-                })
-
-            gearid = yield gearid
-            ownerid = yield ownerid
-            jockeyid = yield jockeyid
-            trainerid = yield trainerid
-            horseid = yield horseid
-            raceclassid = yield raceclassid
-            railtypeid = yield railtypeid
-            distanceid = yield distanceid
-
-            raceid = self.scheduler.get_id(
-                HKRace, "PublicRaceIndex",
-                {
-                    "RacecourseCode": item["RacecourseCode"],
-                    "RaceDate": item["RaceDate"],
-                    "RaceDateTime": item["RaceDateTime"],
-                    "Name": item["RaceName"],
-                    "RaceNumber": int(item["RaceNumber"]),
-                    "PublicRaceIndex": item["RacecourseCode"] + item["RaceDate"].strftime("%Y%m%d") + str(item["RaceNumber"]),
-                    "Prizemoney": item.get("Prizemoney", None),
-                    "Raceratingspan": item.get("Raceratingspan", None),
-                    "Surface": item.get("Surface", None),
-                    "Dayofweek": item.get("Dayofweek", None),
-                    "NoSectionals": getnosectionals(item.get("Distance", 0)),
-                    "hk_raceclass_id": raceclassid,
-                    "hk_railtype_id": railtypeid,
-                    "hk_distance_id": distanceid
-                })
-
-            raceid = yield raceid
-
-            self.scheduler.get_id(HKRunner,
-                                  "PublicRaceIndex",
-                                  dict(HorseNumber=item.get("HorseNumber", def_int),
-                                       Jockey=item.get("Jockeyname", None),
-                                       Trainer=item.get("Trainername", None),
-                                       ActualWt=item.get("ActualWt", None),
-                                       Draw=item.get("Draw", None),
-                                       LBW=item.get("LBW", None),
-                                       isScratched=item.get("isScratched", None),
-                                       Last6runs=item.get("Last6runs", None),
-                                       JockeyWtOver=item["JockeyWtOver"] if item["JockeyWtOver"] != u'' else None,
-                                       Rating=item.get("Rating", None),
-                                       RatingChangeL1=int(item["RatingChangeL1"]) if item["RatingChangeL1"] != u'-' else None,
-                                       DeclarHorseWt=item.get("DeclarHorseWt", None),
-                                       HorseWtDeclarChange=item.get("HorseWtDeclarChange", None),
-                                       HorseWtpc=float(item.get("ActualWt", None)) / float(item.get("DeclarHorseWt", None)) if
-                                       item["DeclarHorseWt"] else None,
-                                       # Besttime = item["Besttime"],
-                                       WFA=item.get("WFA", None) if item["WFA"] != '-' else None,
-                                       SeasonStakes=item.get("SeasonStakes", None),
-                                       Priority=item.get("Priority", None),
-                                       PublicRaceIndex=item["RacecourseCode"] + item["RaceDate"].strftime("%Y%m%d") + str(
-                                           item["RaceNumber"]) + item["Horsename"],
-                                       HorseColors=item["images"][0]['data'] if item["images"] else None,
-                                       hk_gear_id=gearid,
-                                       owner_id=ownerid,
-                                       hk_race_id=raceid,
-                                       jockey_id=jockeyid,
-                                       trainer_id=trainerid,
-                                       horse_id=horseid
-                                  ))
-        returnValue(item)
-
-        if isinstance(item, ResultsItem):
-            hkdividendid = self.scheduler.get_id(
-                HKDividend, 'PublicRaceIndex',
-                {
-                    "RaceDate": item["RaceDate"],
-                    "RaceNumber": item["RaceNumber"],
-                    "RacecourseCode": item.get("RacecourseCode", None),
-                    "PublicRaceIndex": item["RacecourseCode"] + item["RaceDate"].strftime("%Y%m%d") + str(item["RaceNumber"]),
-                    "WinDiv": item.get("WinDiv", None),
-                    "Place1Div": item.get("Place1Div"),
-                    "Place2Div": item.get("Place2Div", None),
-                    "Place3Div": item.get("Place3Div", None),
-                    "QNDiv": item.get("QNDiv", None),
-                    "QP12Div": item.get("QP12Div"),
-                    "QP13Div": item.get("QP13Div", None),
-                    "QP23Div": item.get("QP23Div", None),
-                    "TierceDiv": item.get("TierceDiv"),
-                    "TrioDiv": item.get("TrioDiv", None),
-                    "FirstfourDiv": item.get("FirstfourDiv", None),
-                    "QuartetDiv": item.get("QuartetDiv", None),
-                    "ThisDouble11Div": item.get("ThisDouble11Div", None),
-                    "ThisDouble12Div": item.get("ThisDouble12Div", None),
-                    "Treble111Div": item.get("Treble111Div", None),
-                    "Treble112Div": item.get("Treble112Div", None),
-                    "ThisDoubleTrioDiv": item.get("ThisDoubleTrioDiv", None),
-                    "TripleTrio111Div": item.get("TripleTrio111Div", None),
-                    "TripleTrio112Div": item.get("TripleTrio112Div", None),
-                    "SixUpDiv": item.get("SixUpDiv", None),
-                    "SixUpBonusDiv": item.get("SixUpBonusDiv", None)
-                })
-
-            raceclassid = self.scheduler.get_id(
-                Raceclass, "Name",
-                {
-                    "Name": item.get("Raceclass", None)
-                })
-
-            railtypeid = self.scheduler.get_id(
-                Railtype, "Name",
-                {
-                    "Name": item.get("Railtype", None)
-                })
-
-            goingid = self.scheduler.get_id(
-                Going, "Name",
-                {
-                    "Name": item.get("Going", None)
-
-                })
-            distanceid = self.scheduler.get_id(
-                Distance, "MetricName",
-
-                {
-                    "MetricName": int(item.get("Distance", 0)),
-                    "Miles": float(float(item.get("Distance", 0)) / 1600.0),
-                    "Furlongs": int(int(item.get("Distance", 0)) / 200)
-                })
-
-            # gearid = self.scheduler.get_id(
-            #     Gear, "name",
-            #     {
-            #         "name": item["Gear"]
-            #     })
-
-            trainerid = self.scheduler.get_id(
-                Trainer, "Name",
-                {
-
-                    "Name": item["Trainer"],
-                    "Homecountry": "HKG"
-                })
-
-            jockeyid = self.scheduler.get_id(
-                Jockey, "Name",
-                {
-
-                    "Name": item["Jockey"],
-                    "Homecountry": "HKG"
-                })
-
-            horseid = self.scheduler.get_id(
-                Horse, "Code",
-                {
-                    "Code": item["HorseCode"],
-                    "Name": item["Horsename"],
-                    "Homecountry": "HKG"
-
-                })
-
-            hkdividendid = yield hkdividendid
-            raceclassid = yield raceclassid
-            railtypeid = yield railtypeid
-            goingid = yield goingid
-            distanceid = yield distanceid
-
-            raceid = self.scheduler.get_id(
-                HKRace, "PublicRaceIndex",
-                {
-                    "Url": item.get("Url", None),
-                    "RacecourseCode": item["RacecourseCode"],
-                    "RaceDate": item["RaceDate"],
-                    "Name": item["Name"],
-                    # "Inraceimage": item["images"],
-                    # "Inraceimage": item["images"][0]['data'],
-                    "Inraceimage": item["images"][0]['data'] if item["images"] else None,
-                    "RaceNumber": int(item["RaceNumber"]),
-                    "PublicRaceIndex": item["RacecourseCode"] +
-                                       item["RaceDate"].strftime("%Y%m%d") + str(item["RaceNumber"]),
-                    "IncidentReport": item.get("IncidentReport", None),
-                    "RaceIndex": item.get("RaceIndex", None),
-                    "Prizemoney": item.get("Prizemoney", None),
-                    "Raceratingspan": item.get("Raceratingspan", None),
-                    "Surface": item.get("Surface", None),
-                    "Dayofweek": item.get("Dayofweek", None),
-                    "NoSectionals": getnosectionals(item.get("Distance", 0)),
-                    "hk_going_id": goingid,
-                    "hk_raceclass_id": raceclassid,
-                    "hk_railtype_id": railtypeid,
-                    "hk_distance_id": distanceid,
-                    "hk_dividend_id": hkdividendid
-                })
+        # raceclassid = yield raceclassid
+        # railtypeid = yield railtypeid
+        # goingid = yield goingid
+        # distanceid = yield distanceid
 
 
-            # ownerid = yield ownerid
+        runners = HKRunner(
 
-            jockeyid = yield jockeyid
-            horseid = yield horseid
-            raceid = yield raceid
-            trainerid = yield trainerid
+            hk_race_id=self.get_id(session, HKRace, "CompIndex", {
+                "RaceName" : item["RaceName"],
+                "CompIndex": item["RacecourseCode"] + '_' + item["RaceDate"] + '_' + str(item["RaceNumber"]),
+                "RaceDate": item["RaceDate"],
+                "RaceDateTime": item["RaceDateTime"],
+                "LocalRaceDateTime": item["LocalRaceDateTime"],
+                "RacecourseCode": item["RacecourseCode"],
+                "RaceNumber": item["RaceNumber"],
+                "Surface": item["Surface"],
+                "Prizemoney": item["Prizemoney"],
+                "Raceratingspan": item["Raceratingspan"],
+                "hk_raceclass_id": raceclassid,
+                "hk_railtype_id": railtypeid,
+                # "Goingid": self.get_id(session, Going, "Name", {"Name": item.get("Going", None)}),
+                "hk_distance_id": distanceid
+            }),
+            HorseNumber= item['HorseNumber'],
+            Last6runs = item["Last6runs"],
+            ActualWt= item.get("Wt", 0) + item.get("Jockeyclaim", 0) + item.get("JockeyWtOver", 0),
+            JockeyWtOver = item["JockeyWtOver"] if item["JockeyWtOver"] != u'' else None,
+            Draw = item["Draw"],
+            Rating = item["Rating"],
+            RatingChangeL1 = int(item["RatingChangeL1"]) if item["RatingChangeL1"] != u'-' else None,
+            DeclarHorseWt = item["DeclarHorseWt"] if item["DeclarHorseWt"] != u'' else None,
+            HorseWtDeclarChange = item["HorseWtDeclarChange"] if item["HorseWtDeclarChange"] != '-' else None,
+            HorseWtpc = float(item.get("Wt", 0) + item.get("Jockeyclaim", 0) + item.get("JockeyWtOver", 0))/float(item["DeclarHorseWt"]) if item["DeclarHorseWt"] else None,
+            # Besttime = item["Besttime"],
+            WFA = item["WFA"] if item["WFA"] != '-' else None,
+            SeasonStakes = item["SeasonStakes"],
+            Priority = item["Priority"],
+            Age= item["Age"],
+            horse_id = self.get_id(session, Horse, "Name", {
+                "Name": item["Horsename"],
+                "Code": item["Horsecode"],
+                "SireName": item["SireName"],
+                "DamName": item["DamName"],
+                "ImportType": item["ImportType"],
+                "Sex": item["Sex"],
+                "Homecountry": 'HKG',
+                "YearofBirth": item["LocalRaceDateTime"].replace(item["LocalRaceDateTime"].year - item.get("Age",0)).year
+            }),
+            jockey_id = self.get_id(session, Jockey, "Name", {
+                "Name": item["Jockeyname"],
+                "Code": item["Jockeycode"],
+                "Homecountry": 'HKG'
+            }),
+            trainer_id = self.get_id(session, Trainer, "Name", {
+                "Name": item["Trainername"],
+                "Code": item["Trainercode"],
+                "Homecountry": 'HKG'
+            }),
+            gear_id = self.get_id(session, Gear, "Name", {"Name": item["Gear"]}),
+            owner_id = self.get_id(session, Owner, "Name", {
+                "Name": item["Owner"],
+                "Homecountry": 'HKG'
+            }),
 
-            self.scheduler.get_id(HKRunner,
-                                  "PublicRaceIndex",
-                                  dict(HorseNumber=item.get("HorseNumber", def_int),
-                                       Jockey=item["Jockey"],
-                                       Trainer=item["Trainer"],
-                                       ActualWt=item["ActualWt"],
-                                       DeclarHorseWt=item["DeclarHorseWt"],
-                                       Draw=item.get("Draw", None),
-                                       LBW=item.get("LBW", None),
-                                       isScratched=item.get("isScratched", None),
-                                       # LBW= getLBW(item.get("LBW", None),item.get("Place", None), item.get("LBWFirst", None)),
-                                       RunningPosition=item.get("RunningPosition", None),
-                                       Sec1DBL=item.get("Sec1DBL", None),
-                                       Sec2DBL=item.get("Sec2DBL", def_DBL),
-                                       Sec3DBL=item.get("Sec3DBL", def_DBL),
-                                       Sec4DBL=item.get("Sec4DBL", def_DBL),
-                                       Sec5DBL=item.get("Sec5DBL", def_DBL),
-                                       Sec6DBL=item.get("Sec6DBL", def_DBL),
-                                       FinishTime=item.get("FinishTime", def_time),
-                                       Sec1Time=item.get("Sec1time", def_time),
-                                       Sec2Time=item.get("Sec2time", def_time),
-                                       Sec3Time=item.get("Sec3time", def_time),
-                                       Sec4Time=item.get("Sec4time", def_time),
-                                       Sec5Time=item.get("Sec5time", def_time),
-                                       Sec6Time=item.get("Sec6time", def_time),
-                                       WinOdds=item.get("Winodds", None),
-                                       HorseReport=item.get("HorseReport", None),
-                                       PlaceNum=getplace(item.get("Place", None)),
-                                       Place=item.get("Place", None),
-                                       Horseprize=gethorseprize(item.get("PlaceNum", None),
-                                                                item.get("Prizemoney",
-                                                                         None)),
-                                       PublicRaceIndex=item["RacecourseCode"] + item["RaceDate"].strftime("%Y%m%d")
-                                                       + str(item["RaceNumber"]) +
-                                                       item["Horsename"],
-                                       hk_race_id=raceid,
-                                       jockey_id=jockeyid,
-                                       trainer_id=trainerid,
-                                       horse_id=horseid))
-        returnValue(item)
+            )
+
+        try:
+        # session.add(races)
+            session.add(runners)
+            session.commit()
+        except:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+        return item
+
+    def get_id(self, session, model, unique, fields):
+        fval = fields[unique]
+        id = self.cache[model][fval]
+        if id is None:
+            try:
+                id = session.query(model).filter(getattr(model, unique) == fval).one().id
+            except exc.NoResultFound:
+                item = model(**fields)
+                session.add(item)
+                session.flush()
+                session.refresh(item)
+                id = item.id
+            self.cache[model][fval] = id
+        return id
 
 
+# class SQLAlchemyPipeline(object):
+#     def __init__(self):
+#         self.scheduler = DBScheduler()
+
+#     @inlineCallbacks
+#     def process_item(self, item, spider):
+
+#         if isinstance(item, RacedayItem):
+#             gearid = self.scheduler.get_id(
+#                 Gear, "Name",
+#                 {
+#                     "Name": item["Gear"]
+#                 })
+
+#             ownerid = self.scheduler.get_id(
+#                 Owner, "Name",
+#                 {
+#                     "Name": item["Owner"],
+#                     "Homecountry": 'HKG'
+#                 })
+
+#             jockeyid = self.scheduler.get_id(
+#                 Jockey, "Name",
+#                 {
+#                     "Name": item["Jockeyname"],
+#                     "Code": item["Jockeycode"],
+#                     "Homecountry": 'HKG'
+#                 })
+
+#             trainerid = self.scheduler.get_id(
+#                 Trainer, "Name",
+#                 {
+#                     "Name": item["Trainername"],
+#                     "Code": item["Trainercode"],
+#                     "Homecountry": 'HKG'
+#                 })
+
+#             horseid = self.scheduler.get_id(
+#                 Horse, "Name", {
+#                     "Name": item["Horsename"],
+#                     "Code": item["Horsecode"],
+#                     "SireName": item["SireName"],
+#                     "DamName": item.get("DamName", None),
+#                     "ImportType": item.get("ImportType", None),
+#                     "Sex": item.get("Sex", None),
+#                     "Homecountry": 'HKG',
+#                     "YearofBirth": item["YearofBirth"]
+#                 })
+#             railtypeid = self.scheduler.get_id(
+#                 Railtype, "Name", {
+#                     "Name": item.get("Railtype", None)
+#                 })
+
+#             raceclassid = self.scheduler.get_id(
+#                 Raceclass, "Name", {
+#                     "Name": item.get("Raceclass", None)
+#                 })
+
+#             distanceid = self.scheduler.get_id(
+#                 Distance, "MetricName", {
+#                     "MetricName": int(item.get("Distance", 0)),
+#                     "Miles": float(float(item.get("Distance", 0)) / 1600.0),
+#                     "Furlongs": int(int(item.get("Distance", 0)) / 200)
+#                 })
+
+#             gearid = yield gearid
+#             ownerid = yield ownerid
+#             jockeyid = yield jockeyid
+#             trainerid = yield trainerid
+#             horseid = yield horseid
+#             raceclassid = yield raceclassid
+#             railtypeid = yield railtypeid
+#             distanceid = yield distanceid
+
+#             raceid = self.scheduler.get_id(
+#                 HKRace, "PublicRaceIndex",
+#                 {
+#                     "RacecourseCode": item["RacecourseCode"],
+#                     "RaceDate": item["RaceDate"],
+#                     "RaceDateTime": item["RaceDateTime"],
+#                     "Name": item["RaceName"],
+#                     "RaceNumber": int(item["RaceNumber"]),
+#                     "PublicRaceIndex": item["RacecourseCode"] + item["RaceDate"].strftime("%Y%m%d") + str(item["RaceNumber"]),
+#                     "Prizemoney": item.get("Prizemoney", None),
+#                     "Raceratingspan": item.get("Raceratingspan", None),
+#                     "Surface": item.get("Surface", None),
+#                     "Dayofweek": item.get("Dayofweek", None),
+#                     "NoSectionals": getnosectionals(item.get("Distance", 0)),
+#                     "hk_raceclass_id": raceclassid,
+#                     "hk_railtype_id": railtypeid,
+#                     "hk_distance_id": distanceid
+#                 })
+
+#             raceid = yield raceid
+
+#             self.scheduler.get_id(HKRunner,
+#                                   "PublicRaceIndex",
+#                                   dict(HorseNumber=item.get("HorseNumber", def_int),
+#                                        Jockey=item.get("Jockeyname", None),
+#                                        Trainer=item.get("Trainername", None),
+#                                        ActualWt=item.get("ActualWt", None),
+#                                        Draw=item.get("Draw", None),
+#                                        LBW=item.get("LBW", None),
+#                                        isScratched=item.get("isScratched", None),
+#                                        Last6runs=item.get("Last6runs", None),
+#                                        JockeyWtOver=item["JockeyWtOver"] if item["JockeyWtOver"] != u'' else None,
+#                                        Rating=item.get("Rating", None),
+#                                        RatingChangeL1=int(item["RatingChangeL1"]) if item["RatingChangeL1"] != u'-' else None,
+#                                        DeclarHorseWt=item.get("DeclarHorseWt", None),
+#                                        HorseWtDeclarChange=item.get("HorseWtDeclarChange", None),
+#                                        HorseWtpc=float(item.get("ActualWt", None)) / float(item.get("DeclarHorseWt", None)) if
+#                                        item["DeclarHorseWt"] else None,
+#                                        # Besttime = item["Besttime"],
+#                                        WFA=item.get("WFA", None) if item["WFA"] != '-' else None,
+#                                        SeasonStakes=item.get("SeasonStakes", None),
+#                                        Priority=item.get("Priority", None),
+#                                        PublicRaceIndex=item["RacecourseCode"] + item["RaceDate"].strftime("%Y%m%d") + str(
+#                                            item["RaceNumber"]) + item["Horsename"],
+#                                        HorseColors=item["images"][0]['data'] if item["images"] else None,
+#                                        hk_gear_id=gearid,
+#                                        owner_id=ownerid,
+#                                        hk_race_id=raceid,
+#                                        jockey_id=jockeyid,
+#                                        trainer_id=trainerid,
+#                                        horse_id=horseid
+#                                   ))
+#         returnValue(item)
+
+#         if isinstance(item, ResultsItem):
+#             hkdividendid = self.scheduler.get_id(
+#                 HKDividend, 'PublicRaceIndex',
+#                 {
+#                     "RaceDate": item["RaceDate"],
+#                     "RaceNumber": item["RaceNumber"],
+#                     "RacecourseCode": item.get("RacecourseCode", None),
+#                     "PublicRaceIndex": item["RacecourseCode"] + item["RaceDate"].strftime("%Y%m%d") + str(item["RaceNumber"]),
+#                     "WinDiv": item.get("WinDiv", None),
+#                     "Place1Div": item.get("Place1Div"),
+#                     "Place2Div": item.get("Place2Div", None),
+#                     "Place3Div": item.get("Place3Div", None),
+#                     "QNDiv": item.get("QNDiv", None),
+#                     "QP12Div": item.get("QP12Div"),
+#                     "QP13Div": item.get("QP13Div", None),
+#                     "QP23Div": item.get("QP23Div", None),
+#                     "TierceDiv": item.get("TierceDiv"),
+#                     "TrioDiv": item.get("TrioDiv", None),
+#                     "FirstfourDiv": item.get("FirstfourDiv", None),
+#                     "QuartetDiv": item.get("QuartetDiv", None),
+#                     "ThisDouble11Div": item.get("ThisDouble11Div", None),
+#                     "ThisDouble12Div": item.get("ThisDouble12Div", None),
+#                     "Treble111Div": item.get("Treble111Div", None),
+#                     "Treble112Div": item.get("Treble112Div", None),
+#                     "ThisDoubleTrioDiv": item.get("ThisDoubleTrioDiv", None),
+#                     "TripleTrio111Div": item.get("TripleTrio111Div", None),
+#                     "TripleTrio112Div": item.get("TripleTrio112Div", None),
+#                     "SixUpDiv": item.get("SixUpDiv", None),
+#                     "SixUpBonusDiv": item.get("SixUpBonusDiv", None)
+#                 })
+
+#             raceclassid = self.scheduler.get_id(
+#                 Raceclass, "Name",
+#                 {
+#                     "Name": item.get("Raceclass", None)
+#                 })
+
+#             railtypeid = self.scheduler.get_id(
+#                 Railtype, "Name",
+#                 {
+#                     "Name": item.get("Railtype", None)
+#                 })
+
+#             goingid = self.scheduler.get_id(
+#                 Going, "Name",
+#                 {
+#                     "Name": item.get("Going", None)
+
+#                 })
+#             distanceid = self.scheduler.get_id(
+#                 Distance, "MetricName",
+
+#                 {
+#                     "MetricName": int(item.get("Distance", 0)),
+#                     "Miles": float(float(item.get("Distance", 0)) / 1600.0),
+#                     "Furlongs": int(int(item.get("Distance", 0)) / 200)
+#                 })
+
+#             # gearid = self.scheduler.get_id(
+#             #     Gear, "name",
+#             #     {
+#             #         "name": item["Gear"]
+#             #     })
+
+#             trainerid = self.scheduler.get_id(
+#                 Trainer, "Name",
+#                 {
+
+#                     "Name": item["Trainer"],
+#                     "Homecountry": "HKG"
+#                 })
+
+#             jockeyid = self.scheduler.get_id(
+#                 Jockey, "Name",
+#                 {
+
+#                     "Name": item["Jockey"],
+#                     "Homecountry": "HKG"
+#                 })
+
+#             horseid = self.scheduler.get_id(
+#                 Horse, "Code",
+#                 {
+#                     "Code": item["HorseCode"],
+#                     "Name": item["Horsename"],
+#                     "Homecountry": "HKG"
+
+#                 })
+
+#             hkdividendid = yield hkdividendid
+#             raceclassid = yield raceclassid
+#             railtypeid = yield railtypeid
+#             goingid = yield goingid
+#             distanceid = yield distanceid
+
+#             raceid = self.scheduler.get_id(
+#                 HKRace, "PublicRaceIndex",
+#                 {
+#                     "Url": item.get("Url", None),
+#                     "RacecourseCode": item["RacecourseCode"],
+#                     "RaceDate": item["RaceDate"],
+#                     "Name": item["Name"],
+#                     # "Inraceimage": item["images"],
+#                     # "Inraceimage": item["images"][0]['data'],
+#                     "Inraceimage": item["images"][0]['data'] if item["images"] else None,
+#                     "RaceNumber": int(item["RaceNumber"]),
+#                     "PublicRaceIndex": item["RacecourseCode"] +
+#                                        item["RaceDate"].strftime("%Y%m%d") + str(item["RaceNumber"]),
+#                     "IncidentReport": item.get("IncidentReport", None),
+#                     "RaceIndex": item.get("RaceIndex", None),
+#                     "Prizemoney": item.get("Prizemoney", None),
+#                     "Raceratingspan": item.get("Raceratingspan", None),
+#                     "Surface": item.get("Surface", None),
+#                     "Dayofweek": item.get("Dayofweek", None),
+#                     "NoSectionals": getnosectionals(item.get("Distance", 0)),
+#                     "hk_going_id": goingid,
+#                     "hk_raceclass_id": raceclassid,
+#                     "hk_railtype_id": railtypeid,
+#                     "hk_distance_id": distanceid,
+#                     "hk_dividend_id": hkdividendid
+#                 })
+
+
+#             # ownerid = yield ownerid
+
+#             jockeyid = yield jockeyid
+#             horseid = yield horseid
+#             raceid = yield raceid
+#             trainerid = yield trainerid
+
+#             self.scheduler.get_id(HKRunner,
+#                                   "PublicRaceIndex",
+#                                   dict(HorseNumber=item.get("HorseNumber", def_int),
+#                                        Jockey=item["Jockey"],
+#                                        Trainer=item["Trainer"],
+#                                        ActualWt=item["ActualWt"],
+#                                        DeclarHorseWt=item["DeclarHorseWt"],
+#                                        Draw=item.get("Draw", None),
+#                                        LBW=item.get("LBW", None),
+#                                        isScratched=item.get("isScratched", None),
+#                                        # LBW= getLBW(item.get("LBW", None),item.get("Place", None), item.get("LBWFirst", None)),
+#                                        RunningPosition=item.get("RunningPosition", None),
+#                                        Sec1DBL=item.get("Sec1DBL", None),
+#                                        Sec2DBL=item.get("Sec2DBL", def_DBL),
+#                                        Sec3DBL=item.get("Sec3DBL", def_DBL),
+#                                        Sec4DBL=item.get("Sec4DBL", def_DBL),
+#                                        Sec5DBL=item.get("Sec5DBL", def_DBL),
+#                                        Sec6DBL=item.get("Sec6DBL", def_DBL),
+#                                        FinishTime=item.get("FinishTime", def_time),
+#                                        Sec1Time=item.get("Sec1time", def_time),
+#                                        Sec2Time=item.get("Sec2time", def_time),
+#                                        Sec3Time=item.get("Sec3time", def_time),
+#                                        Sec4Time=item.get("Sec4time", def_time),
+#                                        Sec5Time=item.get("Sec5time", def_time),
+#                                        Sec6Time=item.get("Sec6time", def_time),
+#                                        WinOdds=item.get("Winodds", None),
+#                                        HorseReport=item.get("HorseReport", None),
+#                                        PlaceNum=getplace(item.get("Place", None)),
+#                                        Place=item.get("Place", None),
+#                                        Horseprize=gethorseprize(item.get("PlaceNum", None),
+#                                                                 item.get("Prizemoney",
+#                                                                          None)),
+#                                        PublicRaceIndex=item["RacecourseCode"] + item["RaceDate"].strftime("%Y%m%d")
+#                                                        + str(item["RaceNumber"]) +
+#                                                        item["Horsename"],
+#                                        hk_race_id=raceid,
+#                                        jockey_id=jockeyid,
+#                                        trainer_id=trainerid,
+#                                        horse_id=horseid))
+#         returnValue(item)
+
+
+
+
+#KEEP FOR IMAGES
 class ByteStorePipeline(ImagesPipeline):
     def media_downloaded(self, response, request, info):
         referer = request.headers.get('Referer')
