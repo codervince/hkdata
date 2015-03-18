@@ -19,13 +19,17 @@ import settings
 
 
 
-def create_tables(engine):
-    ModelBase.metadata.create_all(engine)
+# def create_tables(engine):
+#     ModelBase.metadata.create_all(engine)
 
 
 #for multithreading
 # from twisted.web import xmlrpc, server
 # from twisted.internet import reactor
+Base = declarative_base()
+engine = create_engine(URL(**settings.DATABASE))
+metadata = MetaData(bind=engine)
+
 ModelBase = declarative_base()
 # engine = create_engine(URL(**settings.DATABASE))
 # metadata = MetaData(bind=engine)
